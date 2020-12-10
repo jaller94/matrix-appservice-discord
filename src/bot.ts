@@ -66,7 +66,6 @@ export interface IThirdPartyLookup {
 export class DiscordBot {
     private clientFactory: DiscordClientFactory;
     private bot: Discord.Client;
-    private presenceInterval: number;
     private sentMessages: string[];
     private lastEventIds: { [channelId: string]: string };
     private discordMsgProcessor: DiscordMessageProcessor;
@@ -157,6 +156,11 @@ export class DiscordBot {
         this.userSync = new UserSyncroniser(this.bridge, this.config, this, this.store.userStore);
     }
 
+    private isGuildWhitelisted(guild: Discord.Guild|null): boolean {
+        // TODO Implement this correctly.
+        return false;
+    }
+
     public async run(): Promise<void> {
         const client = await this.clientFactory.getClient();
         if (!this.config.bridge.disableTypingNotifications) {
@@ -169,6 +173,9 @@ export class DiscordBot {
         if (!this.config.bridge.disablePresence) {
             client.on("presenceUpdate", (_, newPresence) => {
                 try {
+                    if (!this.isGuildWhitelisted(newPresence.guild)) {
+                        return;
+                    }
                     this.presenceHandler.EnqueueUser(newPresence);
                 } catch (err) { log.warning("Exception thrown while handling \"presenceUpdate\" event", err); }
             });
@@ -185,11 +192,17 @@ export class DiscordBot {
         });
         client.on("guildUpdate", async (_, newGuild) => {
             try {
+                if (!this.isGuildWhitelisted(newGuild)) {
+                    return;
+                }
                 await this.channelSync.OnGuildUpdate(newGuild);
             } catch (err) { log.error("Exception thrown while handling \"guildUpdate\" event", err); }
         });
         client.on("guildDelete", async (guild) => {
             try {
+                if (!this.isGuildWhitelisted(guild)) {
+                    return;
+                }
                 await this.channelSync.OnGuildDelete(guild);
             } catch (err) { log.error("Exception thrown while handling \"guildDelete\" event", err); }
         });
@@ -199,6 +212,9 @@ export class DiscordBot {
 
         client.on("messageDelete", async (msg: Discord.Message) => {
             try {
+                if (!this.isGuildWhitelisted(msg.guild)) {
+                    return;
+                }
                 await this.channelLock.wait(msg.channel.id);
                 this.clientFactory.bindMetricsToChannel(msg.channel as Discord.TextChannel);
                 this.discordMessageQueue[msg.channel.id] = (async () => {
@@ -220,6 +236,9 @@ export class DiscordBot {
                 msgs.forEach((msg) => {
                     promiseArr.push(async () => {
                         try {
+                            if (!this.isGuildWhitelisted(msg.guild)) {
+                                return;
+                            }
                             await this.channelLock.wait(msg.channel.id);
                             this.clientFactory.bindMetricsToChannel(msg.channel as Discord.TextChannel);
                             await this.DeleteDiscordMessage(msg);
@@ -240,6 +259,9 @@ export class DiscordBot {
                 this.discordMessageQueue[newMessage.channel.id] = (async () => {
                     await (this.discordMessageQueue[newMessage.channel.id] || Promise.resolve());
                     try {
+                        if (!this.isGuildWhitelisted(newMessage.guild)) {
+                            return;
+                        }
                         await this.OnMessageUpdate(oldMessage, newMessage);
                     } catch (err) {
                         log.error("Caught while handing 'messageUpdate'", err);
@@ -251,6 +273,9 @@ export class DiscordBot {
         });
         client.on("message", async (msg: Discord.Message) => {
             try {
+                if (!this.isGuildWhitelisted(msg.guild)) {
+                    return;
+                }
                 log.verbose(`Got incoming msg i:${msg.id} c:${msg.channel.id} g:${msg.guild?.id}`);
                 MetricPeg.get.registerRequest(msg.id);
                 await this.channelLock.wait(msg.channel.id);
@@ -281,6 +306,9 @@ export class DiscordBot {
         });
         client.on("guildMemberAdd", async (member) => {
             try {
+                if (!this.isGuildWhitelisted(member.guild)) {
+                    return;
+                }
                 if (!(member instanceof Discord.GuildMember)) {
                     log.warn(`Ignoring update for ${member.guild.id} ${member.id}. User was partial.`);
                     return;
@@ -290,6 +318,9 @@ export class DiscordBot {
         });
         client.on("guildMemberRemove", async (member) =>  {
             try {
+                if (!this.isGuildWhitelisted(member.guild)) {
+                    return;
+                }
                 if (!(member instanceof Discord.GuildMember)) {
                     log.warn(`Ignoring update for ${member.guild.id} ${member.id}. User was partial.`);
                     return;
@@ -299,6 +330,9 @@ export class DiscordBot {
         });
         client.on("guildMemberUpdate", async (_, member) => {
             try {
+                if (!this.isGuildWhitelisted(member.guild)) {
+                    return;
+                }
                 if (!(member instanceof Discord.GuildMember)) {
                     log.warn(`Ignoring update for ${member.guild.id} ${member.id}. User was partial.`);
                     return;
@@ -317,6 +351,9 @@ export class DiscordBot {
                 this.config.bridge.presenceInterval = MIN_PRESENCE_UPDATE_DELAY;
             }
             this.bot.guilds.cache.forEach((guild) => {
+                if (!this.isGuildWhitelisted(guild)) {
+                    return;
+                }
                 guild.members.cache.forEach((member) => {
                     if (member.id !== this.GetBotId()) {
                         this.presenceHandler.EnqueueUser(member.user.presence);
