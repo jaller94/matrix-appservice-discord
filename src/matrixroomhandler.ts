@@ -45,6 +45,18 @@ const JOIN_ROOM_SCHEDULE = [
 ];
 /* tslint:enable:no-magic-numbers */
 
+export interface ICreationOptions {
+    initial_state: {
+        content: {
+            join_rule: string,
+        },
+        state_key: string,
+        type: string,
+    }[];
+    room_alias_name: string;
+    visibility: string;
+}
+
 export class MatrixRoomHandler {
     private botUserId: string;
     private botJoinedRooms: Set<string>; // roomids
@@ -67,12 +79,13 @@ export class MatrixRoomHandler {
                     .catch((err) => log.warn("Failed to get protocol", err));
         });
 
-        // tslint:disable-next-line:no-any
-        this.bridge.on("thirdparty.location.remote", (protocol: string, fields: any, cb: (response: any) => void) => {
-            this.tpGetLocation(protocol, fields)
-            .then(cb)
-            .catch((err) => log.warn("Failed to get remote locations", err));
-        });
+        this.bridge.on("thirdparty.location.remote",
+            (protocol: string, fields: unknown, cb: (response: IThirdPartyLookup[]) => void) => {
+                this.tpGetLocation(protocol, fields)
+                .then(cb)
+                .catch((err) => log.warn("Failed to get remote locations", err));
+            },
+        );
 
         // These are not supported.
         this.bridge.on("thirdparty.location.matrix", (matrixId: string, cb: (response: null) => void) => {
@@ -144,8 +157,7 @@ export class MatrixRoomHandler {
         await Promise.all(promiseList);
     }
 
-    // tslint:disable-next-line no-any
-    public async OnAliasQuery(alias: string): Promise<any> {
+    public async OnAliasQuery(alias: string): Promise<ICreationOptions | undefined> {
         const aliasLocalpart = alias.substr("#".length, alias.indexOf(":") - 1);
         log.info("Got request for #", aliasLocalpart);
         const srvChanPair = aliasLocalpart.substr("_discord_".length).split("_", ROOM_NAME_PARTS);
@@ -251,7 +263,7 @@ export class MatrixRoomHandler {
     }
 
     private async createMatrixRoom(channel: Discord.TextChannel,
-                                   alias: string, aliasLocalpart: string) {
+                                   alias: string, aliasLocalpart: string): Promise<ICreationOptions> {
         const remote = new RemoteStoreRoom(`discord_${channel.guild.id}_${channel.id}`, {
             discord_channel: channel.id,
             discord_guild: channel.guild.id,
@@ -260,7 +272,7 @@ export class MatrixRoomHandler {
             update_name: 1,
             update_topic: 1,
         });
-        const creationOpts = {
+        const creationOpts: ICreationOptions = {
             initial_state: [
                 {
                     content: {
@@ -273,7 +285,7 @@ export class MatrixRoomHandler {
             room_alias_name: aliasLocalpart,
             visibility: this.config.room.defaultVisibility,
         };
-        // We need to tempoarily store this until we know the room_id.
+        // We need to temporarily store this until we know the room_id.
         await this.roomStore.linkRooms(
             new MatrixStoreRoom(alias),
             remote,
