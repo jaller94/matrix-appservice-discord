@@ -197,7 +197,7 @@ async function run(): Promise<void> {
                 return;
             }
             await createRoom(createRoomOpts);
-            await roomhandler.OnAliasQueried(roomAlias, createRoomOpts.__roomId!);
+            await roomhandler.OnAliasQueried(roomAlias, createRoomOpts.__roomId);
         } catch (err) {
             log.error("Exception thrown while handling \"query.room\" event", err);
         }
